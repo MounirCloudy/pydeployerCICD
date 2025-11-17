@@ -1,42 +1,9 @@
-
-
-# Pipeline.yml - Configuration du pipeline local pydeployerCICD -
-# Encadrement : Professeur Franck Pommereau
-project :
-  name: "pydeployerCICD"
-  author: "Mounir MESSADI"
-  version_file: "VERSION"
-  logs_dir: "logs"
-  archive_dir: "archive"
-
 repo:
-  #i must change this config part everytime i need to work on a certrain repo
- #url: "https://github.com/MounirCloudy/yourREPO.git"
- target: "project_repo"
+  url: "https://github.com/MounirCloudy/monitoring-tools-stack.git"
+  target: "monitoring-tools-stack"
 
-#LES ETAPES PRINCIPALES DU PIPELINE
- 
- stages:
-   clone:
-     description: "clone le depot github vers ton machine local "
-     command: "git clone https://github.com/MounirCloudy/yourREPO.git project_repo"
+test:
+  command: "pytest -v"
 
-   sync:
-     description: "equivalent du git pull pour synchronise le repo local avec celui du github"
-     command: "git pull"
-     cwd: "project_repo"
-
-   build:
-     description: "increment la version actuel , cree une archive zip et effectue un commit git"
-     command: "python3 pydeployer.py build"
-     cwd: "project_repo"
-
-   test:
-     description: "effectue les tests unitaire automatiques avec pytest."
-     command: "pytest -v"
-     cwd: "project_repo"
-
-   rollback:
-     description: "annule le dernier commit en cas d’erreur."
-     command: "git reset --hard HEAD~1"
-     cwd: "project_repo"
+deploy:
+  branch: "main"
