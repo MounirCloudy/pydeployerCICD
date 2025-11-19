@@ -1,39 +1,37 @@
 #!/usr/bin/env python3
 """
-PyDeployer — Python-only CI/CD automation tool.
+PyDeployer VERSION NOYEAU MINIMAL —  outil CI/CD en Python.
 
-Features:
- - Clone into cloned_projects/<target>
- - Build (increment version + commit)
- - Test
- - Deploy
- - Rollback safely
- - Minimal YAML configuration
- - Full logging + colored output
+But du script :
+ - cloner un repo
+ - build (augmenter version + commit)
+ - lancer les tests
+ - déployer (push)
+ - rollback si besoin
 
-Author: MESSADI Mounir (Université Paris-Saclay)
+Tout est fait en Python, pas besoin d’outils externes lourds.
 """
 
-import logging
-import subprocess
-import sys
-from pathlib import Path
+import logging #enregistrer les activite du pipeline pour des raisons de securite
+import subprocess # excuter des commandes git et sys depuis python3
+import sys # exit le programme en cas d'erreur , FAIL FAST  
+from pathlib import Path 
 from datetime import datetime
-import yaml
+import yaml # pour excuter la configuration pipeline yml
 from colorama import Fore, Style, init
 
-# === Initialize colored output ===
+# Active les couleurs dans le terminal (pratique pour les messages)
 init(autoreset=True)
 
-# === Paths ===
-BASE_DIR = Path(__file__).parent
-LOG_DIR = BASE_DIR / "logs"
-LOG_DIR.mkdir(exist_ok=True)
+# On définit les dossiers utilisés par l'outil
+BASE_DIR = Path(__file__).parent     # dossier où vit ce script
+LOG_DIR = BASE_DIR / "logs"          # on met les logs ici
+LOG_DIR.mkdir(exist_ok=True)         # crée le dossier si pas là
 
-CLONED_DIR = BASE_DIR / "cloned_projects"
-CLONED_DIR.mkdir(exist_ok=True)
+CLONED_DIR = BASE_DIR / "cloned_projects"  # où mettre les repos clonés
+CLONED_DIR.mkdir(exist_ok=True) #sinon on cree un nouveau repo 
 
-# === Logging setup ===
+# Config de logging : format, fichier de log, affichage écran
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_file = LOG_DIR / f"pydeployer_{timestamp}.log"
 
@@ -41,39 +39,45 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(log_file, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(log_file, encoding="utf-8"), #display outputs dans les fichiers logs
+        logging.StreamHandler(sys.stdout), #display outputs dans CLI
     ],
 )
 logger = logging.getLogger("PyDeployer")
 
-# === Colored console helpers ===
+# Petites fonctions juste pour afficher plus joliment
 def info(msg): print(Fore.CYAN + msg + Style.RESET_ALL)
 def success(msg): print(Fore.GREEN + msg + Style.RESET_ALL)
 def warn(msg): print(Fore.YELLOW + msg + Style.RESET_ALL)
 def error(msg): print(Fore.RED + msg + Style.RESET_ALL)
 
-# === Run system command ===
 def run_cmd(cmd, cwd=None):
-    """Run a system command with logging and error handling."""
+    """
+    Exécute une commande (git, tests, etc.)
+    - Si ça marche → log
+    - Si ça plante → on affiche l’erreur et on stoppe tout
+    """
     try:
         result = subprocess.run(
             cmd,
             cwd=cwd,
             text=True,
-            capture_output=True,
-            check=True
+            capture_output=True,  # on récupère stdout et stderr
+            check=True            # si exit code != 0 → exception
         )
         if result.stdout:
             logger.info(result.stdout.strip())
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        logger.error(e.stderr)
+        logger.error(e.stderr)  # pour garder une trace
         error(f" Command failed: {' '.join(cmd)}")
         sys.exit(1)
 
-# === Load minimal config ===
 def load_config():
+    """
+    charge pipeline.yml (fichier obligatoire pour faire tourner l’outil).
+    Si le fichier n'existe pas → on arrête tout.
+    """
     cfg_path = BASE_DIR / "pipeline.yml"
     if not cfg_path.exists():
         error(" pipeline.yml not found!")
@@ -81,41 +85,48 @@ def load_config():
     with open(cfg_path, "r") as f:
         return yaml.safe_load(f) or {}
 
-# === Clean old logs ===
 def clean_old_logs():
+    """
+    juste du ménage : on garde les 10 derniers logs.
+    c’est suffisant et évite d’encombrer le dossier.
+    """
     logs = sorted(LOG_DIR.glob("pydeployer_*.log"),
                   key=lambda p: p.stat().st_mtime,
                   reverse=True)
     for old in logs[10:]:
         old.unlink(missing_ok=True)
 
-# === CI/CD STAGES ===
+# -------------------------------
+#       CI/CD STAGES
+# -------------------------------
 
 def stage_clone(config):
-    """Clone or update the repository."""
+    """Clone un repo ou le met à jour s’il est déjà là."""
     info("=== CLONE ===")
 
     repo_url = config["repo"]["url"]
     target_name = config["repo"]["target"]
     target_dir = CLONED_DIR / target_name
 
+    # Si le dossier existe déjà → juste un pull
     if target_dir.exists():
-        info(f" Repository already exists → pulling latest changes...")
+        info(" if repo already exists → pulling updates...")
         run_cmd(["git", "pull"], cwd=target_dir)
     else:
-        info(f"📥 Cloning {repo_url} into {target_dir} ...")
+        info(f"cloning {repo_url} in {target_dir} ...")
         run_cmd(["git", "clone", repo_url, str(target_dir)])
 
     success("Clone completed.")
 
 def stage_build(config):
-    """Increment version + commit changes."""
+    """Gère la version (augmentation simple) puis commit."""
     info("=== BUILD ===")
 
     target_dir = CLONED_DIR / config["repo"]["target"]
     version_file = target_dir / "VERSION"
 
-    # Create or increment version
+    # si VERSION existe → on l'incrémente
+    # sinon → première version : 1
     if version_file.exists():
         version = int(version_file.read_text().strip()) + 1
     else:
@@ -123,17 +134,18 @@ def stage_build(config):
 
     version_file.write_text(str(version))
 
-    # Git commit
+    # commit Git des changements
     run_cmd(["git", "add", "."], cwd=target_dir)
     try:
         run_cmd(["git", "commit", "-m", f"Build version {version}"], cwd=target_dir)
     except SystemExit:
-        warn(" No changes to commit (repository clean).")
+        # souvent git dit "nothing to commit" si rien n’a changé.
+        warn(" No changes to commit (clean repo).")
 
-    success(f" Build completed. Version = {version}")
+    success(f" Build done. Version = {version}")
 
 def stage_test(config):
-    """Run test command."""
+    """Exécute la commande de test fournie dans la config."""
     info("=== TEST ===")
 
     target_dir = CLONED_DIR / config["repo"]["target"]
@@ -142,22 +154,27 @@ def stage_test(config):
     info(f"Running tests: {test_command}")
     run_cmd(test_command.split(), cwd=target_dir)
 
-    success(" All tests passed.")
-    
+    success(" All tests passed BRAVOOOO ")
+
 def stage_deploy(config):
-    """Push changes to GitHub."""
+    """push sur la branche de déploiement."""
     info("=== DEPLOY ===")
 
     target_dir = CLONED_DIR / config["repo"]["target"]
     branch = config["deploy"]["branch"]
 
+    # rebase avant de pousser comme des SAFE measures → évite les conflits bêtes
     run_cmd(["git", "pull", "origin", branch, "--rebase"], cwd=target_dir)
     run_cmd(["git", "push", "origin", branch], cwd=target_dir)
 
-    success(f"Deploy completed on branch '{branch}'.")
+    success(f"Deployed on branch '{branch}'")
 
 def stage_rollback(config):
-    """Undo last commit safely using revert."""
+    """
+    revert du dernier commit.
+    on utilise revert (et pas reset) pour un rollback "propre"
+    qui laisse l’historique correct.
+    """
     info("=== ROLLBACK ===")
 
     target_dir = CLONED_DIR / config["repo"]["target"]
@@ -165,20 +182,23 @@ def stage_rollback(config):
     run_cmd(["git", "revert", "--no-edit", "HEAD"], cwd=target_dir)
     run_cmd(["git", "push", "origin", "HEAD"], cwd=target_dir)
 
-    success(" Rollback completed.")
+    success(" Rollback finished.")
 
-# === MAIN CLI ===
+# -------------------------------
+#      MAIN SCRIPT (CLI)
+# -------------------------------
 if __name__ == "__main__":
     import argparse
 
-    clean_old_logs()
+    clean_old_logs()  # petit ménage
 
-    parser = argparse.ArgumentParser(description="PyDeployer - Python CI/CD Tool")
+    parser = argparse.ArgumentParser(description="PyDeployer - CI/CD Tool")
     parser.add_argument("stage", choices=["clone", "build", "test", "deploy", "rollback"])
     args = parser.parse_args()
 
-    config = load_config()
+    config = load_config()  # on lit pipeline.yml
 
+    # table qui relie "clone", "build", etc. → aux vraies fonctions
     stages = {
         "clone": stage_clone,
         "build": stage_build,
@@ -187,4 +207,5 @@ if __name__ == "__main__":
         "rollback": stage_rollback,
     }
 
+    # on lance l’étape demandée en CLI
     stages[args.stage](config)
