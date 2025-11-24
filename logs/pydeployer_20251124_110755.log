@@ -1,0 +1,4 @@
+2025-11-24 11:07:56,640 [INFO] Current branch main is up to date.
+2025-11-24 11:08:08,607 [ERROR] remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/MounirCloudy/monitoring-tools-stack.git/'
+
