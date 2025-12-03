@@ -7,3 +7,7 @@ test:
 
 deploy:
   branch: "main"
+
+aws:
+  sns_topic_arn: "arn:aws:sns:eu-west-3:537124950013:pydeployer"
+  region: "eu-west-3"

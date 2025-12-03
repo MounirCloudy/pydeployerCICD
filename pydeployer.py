@@ -15,21 +15,26 @@ Tout est fait en Python, pas besoin d’outils externes lourds.
 import logging #enregistrer les activite du pipeline pour des raisons de securite
 import subprocess # excuter des commandes git et sys depuis python3
 import sys # exit le programme en cas d'erreur , FAIL FAST  
-from pathlib import Path 
+from pathlib import Path
 from datetime import datetime
 import yaml # pour excuter la configuration pipeline yml
 from colorama import Fore, Style, init
 
+# >>> SNS ADDED
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+# <<< SNS ADDED
+
 # Active les couleurs dans le terminal (pratique pour les messages)
 init(autoreset=True)
 
-# On définit les dossiers utilisés par l'outil
+# On définit les dossiers utilisés par l’outil
 BASE_DIR = Path(__file__).parent     # dossier où vit ce script
 LOG_DIR = BASE_DIR / "logs"          # on met les logs ici
 LOG_DIR.mkdir(exist_ok=True)         # crée le dossier si pas là
 
 CLONED_DIR = BASE_DIR / "cloned_projects"  # où mettre les repos clonés
-CLONED_DIR.mkdir(exist_ok=True) #sinon on cree un nouveau repo 
+CLONED_DIR.mkdir(exist_ok=True) #sinon on cree un nouveau repo
 
 # Config de logging : format, fichier de log, affichage écran
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -51,6 +56,31 @@ def success(msg): print(Fore.GREEN + msg + Style.RESET_ALL)
 def warn(msg): print(Fore.YELLOW + msg + Style.RESET_ALL)
 def error(msg): print(Fore.RED + msg + Style.RESET_ALL)
 
+# >>> SNS ADDED
+def send_sns_alert(message, config):
+    """Send error message to SNS topic if configured."""
+    if "aws" not in config:
+        return  # SNS non configuré = on ignore
+
+    topic_arn = config["aws"].get("sns_topic_arn")
+    region = config["aws"].get("region", "eu-west-3")
+
+    if not topic_arn:
+        return
+
+    try:
+        sns = boto3.client("sns", region_name=region)
+        sns.publish(
+            TopicArn=topic_arn,
+            Subject="🚨 PyDeployer Pipeline Error",
+            Message=message
+        )
+        success("SNS alert sent ✔")
+    except (BotoCoreError, ClientError) as e:
+        error(f"SNS ERROR: {e}")
+# <<< SNS ADDED
+
+
 def run_cmd(cmd, cwd=None):
     """
     Exécute une commande (git, tests, etc.)
@@ -68,10 +98,19 @@ def run_cmd(cmd, cwd=None):
         if result.stdout:
             logger.info(result.stdout.strip())
         return result.stdout.strip()
+
     except subprocess.CalledProcessError as e:
         logger.error(e.stderr)  # pour garder une trace
         error(f" Command failed: {' '.join(cmd)}")
+
+        # >>> SNS ADDED
+        # Envoi automatique de l'erreur à SNS
+        full_msg = f"Command failed: {' '.join(cmd)}\nError: {e.stderr}"
+        send_sns_alert(full_msg, load_config())
+        # <<< SNS ADDED
+
         sys.exit(1)
+
 
 def load_config():
     """
@@ -208,4 +247,12 @@ if __name__ == "__main__":
     }
 
     # on lance l’étape demandée en CLI
-    stages[args.stage](config)
+    try:
+        stages[args.stage](config)
+
+    except Exception as e:
+        # >>> SNS ADDED
+        send_sns_alert(f"Unexpected error during stage '{args.stage}': {e}", config)
+        # <<< SNS ADDED
+
+        raise
