@@ -9,7 +9,7 @@ But du script :
  - déployer (push)
  - rollback si besoin
 
-Tout est fait en Python, pas besoin d’outils externes lourds.
+Tout est fait en Python, pas besoin d'outils externes lourds.
 """
 
 import logging #enregistrer les activite du pipeline pour des raisons de securite
@@ -28,7 +28,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 # Active les couleurs dans le terminal (pratique pour les messages)
 init(autoreset=True)
 
-# On définit les dossiers utilisés par l’outil
+# On définit les dossiers utilisés par l'outil
 BASE_DIR = Path(__file__).parent     # dossier où vit ce script
 LOG_DIR = BASE_DIR / "logs"          # on met les logs ici
 LOG_DIR.mkdir(exist_ok=True)         # crée le dossier si pas là
@@ -57,8 +57,8 @@ def warn(msg): print(Fore.YELLOW + msg + Style.RESET_ALL)
 def error(msg): print(Fore.RED + msg + Style.RESET_ALL)
 
 # >>> SNS ADDED
-def send_sns_alert(message, config):
-    """Send error message to SNS topic if configured."""
+def send_sns_alert(message, config, stage=""):
+    """Send message to SNS topic if configured."""
     if "aws" not in config:
         return  # SNS non configuré = on ignore
 
@@ -70,22 +70,25 @@ def send_sns_alert(message, config):
 
     try:
         sns = boto3.client("sns", region_name=region)
+        full_msg = f"""PyDeployer Pipeline ({stage})
+{message}
+{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+        
         sns.publish(
             TopicArn=topic_arn,
-            Subject="🚨 PyDeployer Pipeline Error",
-            Message=message
+            Subject=f"PyDeployer {stage}",
+            Message=full_msg
         )
-        success("SNS alert sent ✔")
+        success("SNS alert sent")
     except (BotoCoreError, ClientError) as e:
         error(f"SNS ERROR: {e}")
 # <<< SNS ADDED
-
 
 def run_cmd(cmd, cwd=None):
     """
     Exécute une commande (git, tests, etc.)
     - Si ça marche → log
-    - Si ça plante → on affiche l’erreur et on stoppe tout
+    - Si ça plante → on affiche l'erreur et on stoppe tout
     """
     try:
         result = subprocess.run(
@@ -106,15 +109,14 @@ def run_cmd(cmd, cwd=None):
         # >>> SNS ADDED
         # Envoi automatique de l'erreur à SNS
         full_msg = f"Command failed: {' '.join(cmd)}\nError: {e.stderr}"
-        send_sns_alert(full_msg, load_config())
+        send_sns_alert(full_msg, load_config(), "Error")
         # <<< SNS ADDED
 
         sys.exit(1)
 
-
 def load_config():
     """
-    charge pipeline.yml (fichier obligatoire pour faire tourner l’outil).
+    charge pipeline.yml (fichier obligatoire pour faire tourner l'outil).
     Si le fichier n'existe pas → on arrête tout.
     """
     cfg_path = BASE_DIR / "pipeline.yml"
@@ -127,7 +129,7 @@ def load_config():
 def clean_old_logs():
     """
     juste du ménage : on garde les 10 derniers logs.
-    c’est suffisant et évite d’encombrer le dossier.
+    c'est suffisant et évite d'encombrer le dossier.
     """
     logs = sorted(LOG_DIR.glob("pydeployer_*.log"),
                   key=lambda p: p.stat().st_mtime,
@@ -136,12 +138,12 @@ def clean_old_logs():
         old.unlink(missing_ok=True)
 
 # -------------------------------
-#       CI/CD STAGES
+#       ci/cd stages
 # -------------------------------
 
 def stage_clone(config):
-    """Clone un repo ou le met à jour s’il est déjà là."""
-    info("=== CLONE ===")
+    """Clone un repo ou le met à jour s'il est déjà là."""
+    info("=== clone ===")
 
     repo_url = config["repo"]["url"]
     target_name = config["repo"]["target"]
@@ -156,10 +158,11 @@ def stage_clone(config):
         run_cmd(["git", "clone", repo_url, str(target_dir)])
 
     success("Clone completed.")
+    send_sns_alert("Clone stage completed", config, "Clone")
 
 def stage_build(config):
     """Gère la version (augmentation simple) puis commit."""
-    info("=== BUILD ===")
+    info("=== build ===")
 
     target_dir = CLONED_DIR / config["repo"]["target"]
     version_file = target_dir / "VERSION"
@@ -178,14 +181,15 @@ def stage_build(config):
     try:
         run_cmd(["git", "commit", "-m", f"Build version {version}"], cwd=target_dir)
     except SystemExit:
-        # souvent git dit "nothing to commit" si rien n’a changé.
+        # souvent git dit "nothing to commit" si rien n'a changé.
         warn(" No changes to commit (clean repo).")
 
     success(f" Build done. Version = {version}")
+    send_sns_alert(f"Build completed v{version}", config, "Build")
 
 def stage_test(config):
     """Exécute la commande de test fournie dans la config."""
-    info("=== TEST ===")
+    info("=== test ===")
 
     target_dir = CLONED_DIR / config["repo"]["target"]
     test_command = config["test"]["command"]
@@ -193,11 +197,12 @@ def stage_test(config):
     info(f"Running tests: {test_command}")
     run_cmd(test_command.split(), cwd=target_dir)
 
-    success(" All tests passed BRAVOOOO ")
+    success(" All tests passed")
+    send_sns_alert("All tests passed", config, "Test")
 
 def stage_deploy(config):
     """push sur la branche de déploiement."""
-    info("=== DEPLOY ===")
+    info("=== deploy ===")
 
     target_dir = CLONED_DIR / config["repo"]["target"]
     branch = config["deploy"]["branch"]
@@ -207,14 +212,15 @@ def stage_deploy(config):
     run_cmd(["git", "push", "origin", branch], cwd=target_dir)
 
     success(f"Deployed on branch '{branch}'")
+    send_sns_alert(f"Deployed to {branch}", config, "Deploy")
 
 def stage_rollback(config):
     """
     revert du dernier commit.
     on utilise revert (et pas reset) pour un rollback "propre"
-    qui laisse l’historique correct.
+    qui laisse l'historique correct.
     """
-    info("=== ROLLBACK ===")
+    info("=== rollback ===")
 
     target_dir = CLONED_DIR / config["repo"]["target"]
 
@@ -222,9 +228,10 @@ def stage_rollback(config):
     run_cmd(["git", "push", "origin", "HEAD"], cwd=target_dir)
 
     success(" Rollback finished.")
+    send_sns_alert("Rollback completed", config, "Rollback")
 
 # -------------------------------
-#      MAIN SCRIPT (CLI)
+#      main script (cli)
 # -------------------------------
 if __name__ == "__main__":
     import argparse
@@ -246,13 +253,13 @@ if __name__ == "__main__":
         "rollback": stage_rollback,
     }
 
-    # on lance l’étape demandée en CLI
+    # on lance l'étape demandée en CLI
     try:
         stages[args.stage](config)
 
     except Exception as e:
         # >>> SNS ADDED
-        send_sns_alert(f"Unexpected error during stage '{args.stage}': {e}", config)
+        send_sns_alert(f"Unexpected error during stage '{args.stage}': {e}", config, f"Error {args.stage}")
         # <<< SNS ADDED
 
         raise

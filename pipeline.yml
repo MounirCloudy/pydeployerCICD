@@ -1,6 +1,6 @@
 repo:
-  url: "https://github.com/MounirCloudy/monitoring-tools-stack.git"
-  target: "monitoring-tools-stack"
+  url: "https://github.com/MounirCloudy/calculatrice.git"
+  target: "calculatrice"
 
 test:
   command: "pytest -v"
