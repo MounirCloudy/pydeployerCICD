@@ -1,9 +1,9 @@
 repo:
-  url: "https://github.com/MounirCloudy/calculatrice.git"
-  target: "calculatrice"
+  url: "https://github.com/MounirCloudy/todo_app.git"
+  target: "todo_app"
 
 test:
-  command: "pytest -v"
+  command: "python3 -m pytest tests/ -v"
 
 deploy:
   branch: "main"

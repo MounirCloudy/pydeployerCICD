@@ -14,7 +14,7 @@ Tout est fait en Python, pas besoin d'outils externes lourds.
 
 import logging #enregistrer les activite du pipeline pour des raisons de securite
 import subprocess # excuter des commandes git et sys depuis python3
-import sys # exit le programme en cas d'erreur , FAIL FAST  
+import sys # exit le programme en cas d'erreur , FAIL FAST
 from pathlib import Path
 from datetime import datetime
 import yaml # pour excuter la configuration pipeline yml
@@ -73,7 +73,7 @@ def send_sns_alert(message, config, stage=""):
         full_msg = f"""PyDeployer Pipeline ({stage})
 {message}
 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
-        
+
         sns.publish(
             TopicArn=topic_arn,
             Subject=f"PyDeployer {stage}",
@@ -137,10 +137,7 @@ def clean_old_logs():
     for old in logs[10:]:
         old.unlink(missing_ok=True)
 
-# -------------------------------
-#       ci/cd stages
-# -------------------------------
-
+#       ci/cd stage
 def stage_clone(config):
     """Clone un repo ou le met à jour s'il est déjà là."""
     info("=== clone ===")
@@ -230,9 +227,8 @@ def stage_rollback(config):
     success(" Rollback finished.")
     send_sns_alert("Rollback completed", config, "Rollback")
 
-# -------------------------------
+
 #      main script (cli)
-# -------------------------------
 if __name__ == "__main__":
     import argparse
 
