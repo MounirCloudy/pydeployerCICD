@@ -1,4 +1,4 @@
-2025-12-16 22:02:53,655 [INFO] ============================= test session starts ==============================
+2025-12-18 13:02:01,196 [INFO] ============================= test session starts ==============================
 platform linux -- Python 3.13.3, pytest-9.0.2, pluggy-1.6.0 -- /home/mounir/pydeployerCICD/.venv/bin/python3
 cachedir: .pytest_cache
 rootdir: /home/mounir/pydeployerCICD/cloned_projects/calculatrice
@@ -11,5 +11,5 @@ tests/test_calculatrice.py::test_division PASSED                         [ 66%]
 tests/test_calculatrice.py::test_division_by_zero PASSED                 [ 83%]
 tests/test_calculatrice.py::test_invalid_operator PASSED                 [100%]
 
-============================== 6 passed in 0.02s ===============================
-2025-12-16 22:02:53,670 [INFO] Found credentials in shared credentials file: ~/.aws/credentials
+============================== 6 passed in 0.01s ===============================
+2025-12-18 13:02:01,206 [INFO] Found credentials in shared credentials file: ~/.aws/credentials

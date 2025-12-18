@@ -1,0 +1,3 @@
+2025-12-18 13:01:58,602 [INFO] [main 8a99a32] Build version 5
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+2025-12-18 13:01:58,607 [INFO] Found credentials in shared credentials file: ~/.aws/credentials
